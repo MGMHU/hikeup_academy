@@ -330,6 +330,25 @@
   .vc-title { display: block; font-weight: 600; font-size: 13.5px; margin-top: 2px; }
   .vc-go { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
   .block + .block:has(.video-card) { margin-top: -12px; }
+  .video-ext { position: relative; display: flex; flex-direction: column; justify-content: flex-end; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; padding: 22px; color: #fff;
+    background: radial-gradient(120% 90% at 85% 10%, rgba(38,109,240,.55), transparent 60%), linear-gradient(160deg, #1b1d24, #0d0e12); }
+  .video-ext:hover .vx-play { transform: translate(-50%, -50%) scale(1.06); background: var(--accent); }
+  .vx-play { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 68px; height: 68px; border-radius: 50%; background: rgba(255,255,255,.14); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; transition: transform .15s, background .15s; }
+  .vx-play svg { width: 28px; height: 28px; color: #fff; }
+  .vx-info { display: flex; flex-direction: column; gap: 4px; max-width: 75%; }
+  .vx-src { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.7); }
+  .vx-title { font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; }
+  .vx-go { position: absolute; right: 18px; bottom: 20px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; background: #fff; color: #111; border-radius: 999px; padding: 7px 12px; }
+  .vx-go svg { width: 13px; height: 13px; }
+  @media (max-width: 640px) { .video-ext { padding: 16px; } .vx-go { position: static; align-self: flex-start; margin-top: 10px; } .vx-info { max-width: 100%; } .vx-title { font-size: 15px; } .vx-play { top: 26%; width: 44px; height: 44px; } .vx-play svg { width: 20px; height: 20px; } }
+  .outline a .o-min { margin-left: auto; font-size: 11px; color: var(--text-faint); white-space: nowrap; padding-left: 6px; }
+  .outline a span:not(.o-min) { min-width: 0; }
+  .next-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+  .next-card:hover { border-color: var(--accent); }
+  .next-card .nc-k { font-size: var(--fs-eyebrow); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+  .next-card .nc-t { font-weight: 600; margin-top: 2px; }
+  .next-card .nc-s { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .next-card .nc-go { margin-left: auto; color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
   /* ===== Blocs : texte à copier, encadrés, tableaux ===== */
   .code-block { border: 1px solid var(--border-strong); border-radius: 12px; overflow: hidden; }
   .code-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; background: var(--hover-4); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
@@ -1480,11 +1499,12 @@ const blockWords = b => { const w = t => String(t || '').replace(/<[^>]+>/g, ' '
 function lessonMin(l) {
   if (l.kind === 'exercise') return null;
   if (l.kind === 'quiz') { const q = quizOfLesson(l.id); return q ? Math.max(1, questionsOf(q.id).length) : 1; }
-  const words = (l.blocks || []).reduce((a, b) => a + blockWords(b), 0);
-  return Math.max(1, Math.ceil(words / WPM));
+  const blocks = l.blocks || [], words = blocks.reduce((a, b) => a + (b.minutes ? 0 : blockWords(b)), 0);
+  const ext = blocks.reduce((a, b) => a + (+b.minutes || 0), 0);
+  return Math.max(1, (ext && words < 40 ? 0 : Math.ceil(words / WPM)) + ext);
 }
 const hasVideo = l => (l.blocks || []).some(b => b.type === 'video');
-const durTxt = l => l.kind === 'exercise' ? 'à votre rythme' : `${l.est_minutes} min${hasVideo(l) ? ' + vidéo' : ''}`;
+const durTxt = l => l.kind === 'exercise' ? 'à votre rythme' : `${l.est_minutes} min${(l.blocks || []).some(b => b.type === 'video' && !b.minutes) ? ' + vidéo' : ''}`;
 function recomputeDurations() {
   DB.lessons.forEach(l => { l.est_minutes = lessonMin(l); });
   DB.modules.forEach(m => { m.est_minutes = lessonsOfModule(m.id).reduce((a, l) => a + (l.est_minutes || 0), 0); });
@@ -1691,6 +1711,11 @@ const isCommonPath = pid => foldersOfPath(pid).length > 1;
 const isEnrolledIn = (u, pid) => DB.path_enrollments.some(e => e.user_id === u && e.path_id === pid);
 /* Retour depuis un module ou une leçon : mon parcours si le cursus est le mien, sinon sa fiche catalogue */
 const backFor = pid => isEnrolledIn(me.id, pid) ? 'parcours' : 'cursus/' + pid;
+const rootCrumb = pid => isEnrolledIn(me.id, pid) ? ['parcours', 'Mon parcours'] : isAdmin() ? ['admin-paths', 'Dossiers'] : ['library', 'Bibliothèque'];
+function crumbHtml(pid, items) {
+  const [rn, rl] = rootCrumb(pid);
+  return `<div class="crumb">${[[rn, rl], ...items].map(([nav, label]) => `<a data-nav="${nav}">${esc(label)}</a>`).join('<span class="sep">/</span>')}</div>`;
+}
 const PREVIEW_TXT = "Mode consultation : ce cursus ne fait pas partie de votre formation. Vous pouvez tout lire, rien n'est verrouillé ni enregistré.";
 /* Inscriptions d'un apprenant, dans l'ordre de ses dossiers (tronc commun en premier) */
 function enrollmentsOf(u) {
@@ -1915,7 +1940,7 @@ function renderModule(mid) {
     return `<div class="g-group">${head}${ls.filter(l => l !== main).map(l => row(l, 'g-sub', esc(l.title))).join('')}</div>`;
   }).join('');
   const html = `
-    <div class="crumb"><a data-nav="${back}">${esc(p.title)}</a><span class="sep">/</span><span>Module ${m.position}</span></div>
+    ${crumbHtml(p.id, [['cursus/' + p.id, p.title]])}
     ${!learner ? `<div class="preview-banner">${PREVIEW_TXT}</div>` : ''}
     ${locked ? `<div class="preview-banner">${esc(lockReason(m.id))}</div>` : ''}
     <div class="grid-2">
@@ -1965,7 +1990,7 @@ function renderBlock(b, i, ctx) {
     case 'video': {
       const src = embedUrl(b.url);
       return `<div class="block">${src ? `<div class="video-frame"><iframe src="${esc(src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe></div>`
-        : b.url ? `<a class="video-card" href="${esc(b.url)}" target="_blank" rel="noopener"><span class="vc-play">${PLAY_SVG}</span><span style="min-width:0;"><span class="vc-src">Vidéo · ${esc(b.source || new URL(b.url).hostname.replace('www.', ''))}</span><span class="vc-title">${esc(b.title || b.url)}</span></span><span class="vc-go">Regarder</span></a>`
+        : b.url ? `<a class="video-ext" href="${esc(b.url)}" target="_blank" rel="noopener"><span class="vx-play">${PLAY_SVG}</span><span class="vx-info"><span class="vx-src">${esc(b.source || new URL(b.url).hostname.replace('www.', ''))}${b.minutes ? ' · ' + b.minutes + ' min' : ''}</span><span class="vx-title">${esc(b.title || b.url)}</span></span><span class="vx-go">Regarder la vidéo ${I.link}</span></a>`
         : `<div class="ph video">${PLAY_SVG}<span>Vidéo à ajouter</span></div>`}${b.caption ? `<div class="caption">${esc(b.caption)}</div>` : ''}</div>`;
     }
     case 'image': {
@@ -2026,8 +2051,7 @@ function renderLesson(lid) {
   const m = moduleOfLesson(lid), c = chapterOfLesson(lid), p = byId('paths', m.path_id);
   const learner = isEnrolledIn(me.id, p.id);
   const header = { title: l.title, sub: '' };
-  const crumb = `<div class="crumb"><a data-nav="${backFor(p.id)}">${esc(p.title)}</a><span class="sep">/</span>
-    <a data-nav="module/${m.id}">Module ${m.position}</a><span class="sep">/</span><span>Chapitre ${c.position}</span></div>`;
+  const crumb = crumbHtml(p.id, [['cursus/' + p.id, p.title], ['module/' + m.id, m.title]]);
   if (learner && !moduleUnlocked(me.id, m.id)) {
     return { ...header, html: crumb + `<div class="card empty"><div style="font-weight:600; margin-bottom:6px; color:var(--text)">Leçon verrouillée</div>
       ${esc(lockReason(m.id))}<div style="margin-top:14px;"><a class="btn secondary sm" data-nav="parcours">Retour au parcours</a></div></div>` };
@@ -2051,8 +2075,9 @@ function renderLesson(lid) {
     else if (l.kind === 'content') action = `<button class="btn" type="button" data-act="validate" data-id="${lid}">Valider la leçon</button>`;
     else action = `<span class="muted" style="font-size:12.5px;">${l.kind === 'quiz' ? 'Validée automatiquement quand le score minimum est atteint.' : 'Validée quand votre référent approuve l\'exercice.'}</span>`;
   }
-  const outline = chaptersOfModule(m.id).map(ch => `<div class="chap-t">Chapitre ${ch.position}</div>` + lessonsOfChapter(ch.id).map(x =>
-    `<a data-nav="lesson/${x.id}" class="${x.id === lid ? 'cur' : ''}">${stateIcon(learner ? lessonState(me.id, x) : 'todo')}<span>${esc(x.title)}</span></a>`).join('')).join('');
+  const chs = chaptersOfModule(m.id);
+  const outline = chs.map(ch => (chs.length < 2 ? '' : `<div class="chap-t">${lessonsOfChapter(ch.id).some(x => x.title === ch.title) ? 'Chapitre ' + ch.position : esc(ch.title)}</div>`) + lessonsOfChapter(ch.id).map(x =>
+    `<a data-nav="lesson/${x.id}" class="${x.id === lid ? 'cur' : ''}">${stateIcon(learner ? lessonState(me.id, x) : 'todo')}<span>${esc(x.title)}</span>${x.kind === 'exercise' ? '' : `<span class="o-min">${x.est_minutes} min</span>`}</a>`).join('')).join('');
   const expert = moduleExperts(m.id)[0];
   const modLessons = lessonsOfModule(m.id), pos = modLessons.findIndex(x => x.id === lid);
   const strip = `<div class="step-strip" aria-label="Progression dans le module">${modLessons.map((x, k) => { const stt = learner ? lessonState(me.id, x) : 'todo';
@@ -2071,6 +2096,7 @@ function renderLesson(lid) {
             ${next ? `<a class="btn secondary sm" data-nav="lesson/${next.id}" ${nextLocked ? `data-act="locked" data-mod="${moduleOfLesson(next.id).id}"` : ''}>Suivante</a>` : ''}
           </div>
         </div>
+        ${next && !nextLocked ? `<a class="card next-card" data-nav="lesson/${next.id}"><span style="min-width:0;"><span class="nc-k">Leçon suivante</span><div class="nc-t">${esc(next.title)}</div><div class="nc-s">${esc(moduleOfLesson(next.id).title)} · ${esc(durTxt(next))}</div></span><span class="nc-go">Continuer</span></a>` : ''}
         ${threadHtml(l, m)}
       </div>
       <div class="stack">
@@ -3699,7 +3725,7 @@ function renderAdminOverview() {
   // Taux de complétion par module et position actuelle de chaque consultant (où l'on bloque)
   const current = {}; cs.forEach(u => { const m = currentModuleOf(u.id); if (m) current[m.id] = (current[m.id] || 0) + 1; });
   return `
-    ${SB_READY && !DB.paths.length ? `<div class="card" style="padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap;"><div><div style="font-weight:600;">La base est vide</div><div class="faint" style="font-size:13px;">Chargez les cursus, leçons, quiz et ressources de départ (${SEED_CONTENT.paths.length} cursus, ${SEED_CONTENT.lessons.length} leçons). Vous pourrez tout modifier ensuite.</div></div><button class="btn" data-act="import-starter">Charger les cours de départ</button></div>` : ''}
+    ${SB_READY && missingStarterPaths().length ? (() => { const miss = missingStarterPaths(); return `<div class="card" style="padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap;"><div><div style="font-weight:600;">${DB.paths.length ? 'Nouveaux cours disponibles' : 'La base est vide'}</div><div class="faint" style="font-size:13px;">${miss.length} cursus à charger : ${miss.map(p => esc(p.title)).join(', ')}. Vous pourrez tout modifier ensuite.</div></div><button class="btn" data-act="import-starter">Charger les cours</button></div>`; })() : ''}
     <div class="kpi-grid">
       <div class="card kpi"><div class="label">Consultants en onboarding</div><div class="value">${cs.length}</div><div class="sub">${cs.filter(u => learnerStats(u.id).pct === 100).length} ont terminé</div></div>
       <div class="card kpi"><div class="label">Complétion moyenne</div><div class="value">${avg}%</div><div class="pbar" style="margin-top:8px;"><span style="width:${avg}%"></span></div></div>
@@ -4060,7 +4086,7 @@ function renderCursus(pid) {
         ${st.users.length ? st.users.slice(0, 6).map(u => { const x = pathStats(u.id, pid).pct; return `<${canFollow(u.id) ? `a data-nav="consultant/${u.id}"` : 'div'} class="pp">${avatar(u, 34)}<span class="pp-main"><span class="pp-n">${esc(u.full_name)}</span><span class="pp-r">${esc(u.job_title || '')}</span></span><span class="pp-p"><span class="pbar${x === 100 ? ' ok' : ''}"><span style="width:${x}%"></span></span><b>${x}%</b></span></${canFollow(u.id) ? 'a' : 'div'}>`; }).join('') : '<div class="muted" style="font-size:var(--fs-sub);">Personne n\'est encore inscrit.</div>'}</div>
         ${st.users.length > 6 && canAccompany() ? '<div class="side-foot"><a class="see-all" data-nav="ref-consultants">Tous les participants</a></div>' : ''}</div>
     </div>`;
-  const html = `<div class="crumb"><a data-nav="${back}">${mine ? 'Mon parcours' : isAdmin() ? 'Dossiers' : 'Bibliothèque'}</a><span class="sep">/</span><span>Cursus</span></div>
+  const html = `${crumbHtml(pid, [])}
     ${mine ? '' : `<div class="preview-banner">${PREVIEW_TXT}</div>`}
     <div class="grid-2"><div class="stack-lg">${hero}
       ${pth.description ? `<section><h2 class="h-section">Description</h2><p class="desc">${esc(pth.description)}</p></section>` : ''}
@@ -4213,9 +4239,10 @@ function catalogHtml() {
   return `<section class="cat"><div class="sec-head"><h2 class="h-section">Formations</h2><span class="faint" style="font-size:var(--fs-foot);">Tous les dossiers et cursus, consultables par toute l'équipe</span></div>
     ${groups.map(({ f, paths }) => `<div class="cat-folder"><div class="cat-fhead"><span class="cat-dot" style="background:${f.color || 'var(--accent)'}"></span><span class="cat-fname">${esc(f.name)}</span>${foldersOfUser(me.id).some(x => x.id === f.id) ? '<span class="badge b-prog">Mon dossier</span>' : ''}<span class="cat-fdesc">${esc(f.description || '')}</span></div>
       <div class="m-list">${paths.map(pth => { const mods = modulesOfPath(pth.id), mine = isEnrolledIn(me.id, pth.id), st = mine ? pathStats(me.id, pth.id) : null;
-        const mins = mods.reduce((a, m) => a + (m.est_minutes || 0), 0);
+        const mins = mods.reduce((a, m) => a + (m.est_minutes || 0), 0), nl = mods.reduce((a, m) => a + lessonsOfModule(m.id).length, 0);
+        const tools = [...new Set(mods.map(m => m.tool_id).filter(Boolean))].map(t => byId('tools', t)).filter(Boolean).map(t => t.name);
         return `<a class="m-row" data-nav="cursus/${pth.id}"><span class="m-main"><span class="m-title">${esc(pth.title)} ${commonTag(pth.id)}</span><span class="m-obj">${esc(pth.description || '')}</span>
-          <span class="meta-line">${[mods.length + ' module' + (mods.length > 1 ? 's' : ''), fmtMin(mins)].filter(Boolean).map(esc).join('<span class="dot-sep"></span>')}</span></span>
+          <span class="meta-line">${[tools.join(', '), mods.length + ' module' + (mods.length > 1 ? 's' : ''), nl + ' leçon' + (nl > 1 ? 's' : ''), fmtMin(mins)].filter(Boolean).map(esc).join('<span class="dot-sep"></span>')}</span></span>
           ${mine ? (st.pct === 100 ? `<span class="m-state ok">${OK_SVG}Terminé</span>` : `<div class="m-prog"><div class="pbar"><span style="width:${st.pct}%"></span></div><span>${st.pct}%</span></div>`) : '<span class="m-state">Consulter</span>'}</a>`; }).join('')}</div></div>`).join('')}
   </section>`;
 }
@@ -4413,8 +4440,54 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); closeSearch(); if ($('notifDrawer').classList.contains('open')) closeNotifs(); }
 });
 
+const CLAY_U = [{"t": "Clay 101 : GTM Automation", "lvl": "Débutant", "o": "Les bases pour naviguer dans Clay : trouver, enrichir, transformer et exporter (méthode FETE). Le point de départ obligatoire.", "c": [["Démarrer", [{"t": "Get Started in Clay", "m": 7, "u": "https://university.clay.com/fr/lessons/get-started-in-clay"}, {"t": "Intro to Clay 101: FETE & Jigsaw", "m": 10, "u": "https://university.clay.com/fr/lessons/intro-to-clay-101-fete-jigsaw"}, {"t": "Your First GTM Use Case", "m": 9, "u": "https://university.clay.com/fr/lessons/your-first-gtm-use-case"}, {"t": "How to Experiment Inside of Clay", "m": 8, "u": "https://university.clay.com/fr/lessons/how-to-experiment-inside-of-clay"}]], ["Find : trouver des entreprises et des personnes", [{"t": "Finding Companies in Clay", "m": 7, "u": "https://university.clay.com/fr/lessons/finding-companies-in-clay"}, {"t": "Finding People in Clay", "m": 7, "u": "https://university.clay.com/fr/lessons/finding-people-in-clay"}, {"t": "Finding Jobs Source + Enrichment", "m": 5, "u": "https://university.clay.com/fr/lessons/find-jobs-source-enrichment-clay-101"}, {"t": "Finding Businesses with Google Maps", "m": 7, "u": "https://university.clay.com/fr/lessons/finding-businesses-with-google-maps"}]], ["Enrich : ajouter des données", [{"t": "(Enrich) Add Data To Your Table", "m": 2, "u": "https://university.clay.com/fr/lessons/enrich-add-data-to-your-table"}, {"t": "Enriching Company Data", "m": 8, "u": "https://university.clay.com/fr/lessons/enriching-company-data"}, {"t": "Enriching People Data", "m": 8, "u": "https://university.clay.com/fr/lessons/enriching-people-data"}, {"t": "Enriching with Claygent", "m": 8, "u": "https://university.clay.com/fr/lessons/enriching-with-claygent"}]], ["Transform : nettoyer et normaliser", [{"t": "(Transform) Clean & Normalize Your Data", "m": 6, "u": "https://university.clay.com/fr/lessons/transform-clean-normalize-your-data"}, {"t": "Transforming with AI Formulas", "m": 7, "u": "https://university.clay.com/fr/lessons/transforming-with-ai-formulas"}]], ["Export : sortir les listes de Clay", [{"t": "(Export) Getting Your Lists Out of Clay", "m": 5, "u": "https://university.clay.com/fr/lessons/export-getting-your-lists-out-of-clay"}, {"t": "Exporting to Google Sheets", "m": 6, "u": "https://university.clay.com/fr/lessons/exporting-to-google-sheets"}, {"t": "Exporting to CRM", "m": 6, "u": "https://university.clay.com/fr/lessons/exporting-to-crm"}, {"t": "Where to Go Next", "m": 3, "u": "https://university.clay.com/fr/lessons/where-to-go-next"}]]]}, {"t": "Automated Outbound", "lvl": "Débutant", "o": "Construire des campagnes outbound 1:1 automatisées avec l'IA, de la recherche de prospects jusqu'au séquenceur d'emails.", "c": [["Enrichir et préparer les données", [{"t": "Intro to Personalized Outreach at Scale", "m": 4, "u": "https://university.clay.com/fr/lessons/intro-to-personalized-outreach-at-scale-automated-outbound"}, {"t": "Enrich Companies (Waterfalls)", "m": 4, "u": "https://university.clay.com/fr/lessons/enrich-companies-waterfalls-automated-outbound"}, {"t": "Enrich People (Waterfalls)", "m": 5, "u": "https://university.clay.com/fr/lessons/enrich-people-waterfalls-automated-outbound"}, {"t": "AI Formulas + Conditional Runs", "m": 8, "u": "https://university.clay.com/fr/lessons/ai-formulas-conditional-runs-automated-outbound"}, {"t": "Data Cleaning + Normalization", "m": 3, "u": "https://university.clay.com/fr/lessons/data-cleaning-normalization-automated-outbound"}]], ["Recherche et copywriting avec l'IA", [{"t": "Claygent: AI Web Scraper", "m": 7, "u": "https://university.clay.com/fr/lessons/claygent-ai-web-scraper-automated-outbound"}, {"t": "11 AI Prompts to Automate Prospect Research with Claygent", "m": 20, "u": "https://university.clay.com/fr/lessons/11-ai-prompts-to-automate-prospect-research-with-claygent-automated-outbound"}, {"t": "Intro to AI Snippets (Copywriting)", "m": 4, "u": "https://university.clay.com/fr/lessons/intro-to-ai-snippets-copywriting-automated-outbound"}, {"t": "We Made 24 Prompts So You Don't Have To", "m": 3, "u": "https://university.clay.com/fr/lessons/we-made-24-prompts-so-you-dont-have-to-automated-outbound"}]], ["Envoyer les campagnes", [{"t": "Push Data To Your Email Sequencer", "m": 4, "u": "https://university.clay.com/fr/lessons/push-data-to-your-email-sequencer-automated-outbound"}, {"t": "Personalized Direct Email Campaigns with SmartLead", "m": 6, "u": "https://university.clay.com/fr/lessons/personalized-direct-email-campaigns-step-by-step-walkthrough-with-smartlead-automated-outbound"}, {"t": "Automated Omnichannel with La Growth Machine", "m": 7, "u": "https://university.clay.com/fr/lessons/automated-omnichannel-outreach-via-social-media-and-emails-with-la-growth-machine-automated-outbound"}, {"t": "Deep Dive: SendSpark AI Video Generation", "m": 4, "u": "https://university.clay.com/fr/lessons/deep-dive-sendspark-ai-video-generation-automated-outbound"}, {"t": "Deep Dive: Tavus AI Video Generation", "m": 3, "u": "https://university.clay.com/fr/lessons/deep-dive-tavus-ai-video-generation-automated-outbound"}]]]}, {"t": "Limitless Research", "lvl": "Intermédiaire", "o": "Utiliser le web scraping et Claygent pour récupérer les données introuvables dans les bases classiques.", "c": [["Leçons", [{"t": "Intro to Web Scraping", "m": 3, "u": "https://university.clay.com/fr/lessons/intro-to-web-scraping-limitless-research"}, {"t": "Prompt Engineering Crash Course", "m": 8, "u": "https://university.clay.com/fr/lessons/prompt-engineering-crash-course-limitless-research"}, {"t": "Claygent: AI Web Scraper", "m": 7, "u": "https://university.clay.com/fr/lessons/claygent-ai-web-scraper-limitless-research"}, {"t": "Deep Dive: Clay Chrome Extension", "m": 4, "u": "https://university.clay.com/fr/lessons/deep-dive-clay-chrome-extension-limitless-research"}, {"t": "Deep Dive: Apify Actors", "m": 5, "u": "https://university.clay.com/fr/lessons/deep-dive-apify-actors-limitless-research"}, {"t": "Deep Dive: Zenrows Scraping", "m": 6, "u": "https://university.clay.com/fr/lessons/deep-dive-zenrows-scraping-limitless-research"}, {"t": "Deep Dive: Clay Scrapers", "m": 2, "u": "https://university.clay.com/fr/lessons/deep-dive-clay-scrapers-limitless-research"}]]]}, {"t": "AI-Powered GTM Automation", "lvl": "Intermédiaire", "o": "Les usages de l'IA dans Clay (cadre FETC : Find, Enrich, Transform, Create) et les bonnes pratiques pour économiser les crédits.", "c": [["Les bases", [{"t": "How AI is Reshaping Go-to-Market Strategy", "m": 7, "u": "https://university.clay.com/fr/lessons/how-ai-is-reshaping-go-to-market-strategy"}, {"t": "GTM's AI Toolbox: The FETC Framework", "m": 7, "u": "https://university.clay.com/fr/lessons/gtms-ai-toolbox-the-fetc-framework"}, {"t": "Best Practices To Maximize Your Credits", "m": 6, "u": "https://university.clay.com/fr/lessons/best-practices-to-maximize-your-credits"}]], ["Find", [{"t": "Find: AI-Driven Lead Discovery", "m": 1, "u": "https://university.clay.com/fr/lessons/find-ai-driven-lead-discovery"}, {"t": "Find Your ICP with AI", "m": 3, "u": "https://university.clay.com/fr/lessons/find-your-icp-with-ai"}, {"t": "Find Your Next Customer with Company Lookalikes", "m": 4, "u": "https://university.clay.com/fr/lessons/find-your-next-customer-with-company-lookalikes"}]], ["Enrich", [{"t": "Enrich: Build Complete Prospect Profiles with AI", "m": 2, "u": "https://university.clay.com/fr/lessons/enrich-build-complete-prospect-profiles-with-ai"}, {"t": "Enrich with Claygent for Last-Mile Data Discovery", "m": 5, "u": "https://university.clay.com/fr/lessons/enrich-with-claygent-for-last-mile-data-discovery"}, {"t": "Enrich with Perplexity", "m": 4, "u": "https://university.clay.com/fr/lessons/enrich-with-perplexity"}, {"t": "Enrich Images and Screenshots", "m": 5, "u": "https://university.clay.com/fr/lessons/enrich-from-images-and-screenshots"}, {"t": "Enrich from Financial Filings", "m": 4, "u": "https://university.clay.com/fr/lessons/enrich-from-financial-filings"}]], ["Transform", [{"t": "Transform: Clean, Structure, and Segment Data with AI", "m": 4, "u": "https://university.clay.com/fr/lessons/transform-clean-structure-and-segment-data-with-ai"}, {"t": "Transform with AI Formulas (and Optimize Credits)", "m": 4, "u": "https://university.clay.com/fr/lessons/transform-with-ai-formulas-and-optimize-credits"}, {"t": "Transform Data Into Clear Classifications", "m": 4, "u": "https://university.clay.com/fr/lessons/transform-data-into-clear-classifications"}]], ["Create", [{"t": "Create: AI-Driven Effortless Output", "m": 6, "u": "https://university.clay.com/fr/lessons/create-ai-driven-effortless-output"}, {"t": "Create Personalized Content at Scale", "m": 5, "u": "https://university.clay.com/fr/lessons/create-personalized-content-at-scale"}, {"t": "Create Multi-Step Sequence Messaging with Twain", "m": 3, "u": "https://university.clay.com/fr/lessons/create-multi-step-sequence-messaging-with-twain"}, {"t": "AI-Powered GTM is Constantly Evolving", "m": 2, "u": "https://university.clay.com/fr/lessons/ai-powered-gtm-is-constantly-evolving"}, {"t": "Build, Scale, and Deploy Claygents with Claygent Builder", "m": 9, "u": "https://university.clay.com/fr/lessons/build-scale-and-deploy-claygents-with-claygent-builder"}]]]}, {"t": "TAM Sourcing", "lvl": "Intermédiaire", "o": "Cartographier tout le marché adressable d'un client (TAM) avec les données de Clay, plutôt que de partir de listes figées.", "c": [["Leçons", [{"t": "Introduction to TAM Sourcing", "m": 7, "u": "https://university.clay.com/fr/lessons/introduction-to-tam-sourcing-tam-sourcing"}, {"t": "Understanding your ICP", "m": 4, "u": "https://university.clay.com/fr/lessons/understanding-your-icp-tam-sourcing"}, {"t": "TAM Sourcing Workflows in Clay", "m": 5, "u": "https://university.clay.com/fr/lessons/tam-sourcing-workflows-in-clay-tam-sourcing"}, {"t": "Advanced TAM Sourcing Techniques", "m": 4, "u": "https://university.clay.com/fr/lessons/advanced-tam-sourcing-techniques-tam-sourcing"}, {"t": "Activating your TAM: From Intelligence to Revenue", "m": 8, "u": "https://university.clay.com/fr/lessons/activating-your-tam-from-intelligence-to-revenue-tam-sourcing"}, {"t": "SMB TAM Sourcing", "m": 6, "u": "https://university.clay.com/fr/lessons/smb-tam-sourcing-tam-sourcing"}, {"t": "Data Collection with Third-Party Scrapers", "m": 7, "u": "https://university.clay.com/fr/lessons/data-collection-with-third-party-scrapers-tam-sourcing"}]]]}, {"t": "Signals & ABM", "lvl": "Intermédiaire", "o": "Détecter les signaux d'intention d'achat (recrutements, changements de poste, visites…) et mener des campagnes ABM sur les comptes prioritaires.", "c": [["Leçons", [{"t": "Intro to Signals in Clay", "m": 7, "u": "https://university.clay.com/fr/lessons/intro-to-signals-in-clay-signals-abm"}, {"t": "Types of Signals in Clay", "m": 5, "u": "https://university.clay.com/fr/lessons/types-of-signals-in-clay-signals-abm"}, {"t": "Setting Up Signals in Clay", "m": 5, "u": "https://university.clay.com/fr/lessons/setting-up-signals-in-clay"}, {"t": "Building Custom Signals in Clay", "m": 6, "u": "https://university.clay.com/fr/lessons/building-custom-signals-in-clay"}, {"t": "Advanced Strategies with Signals", "m": 4, "u": "https://university.clay.com/fr/lessons/advanced-strategies-with-signals-signals-abm"}, {"t": "ClayBM: ABM in Clay", "m": 6, "u": "https://university.clay.com/fr/lessons/claybm-abm-in-clay-signals-abm"}, {"t": "ABM and Ad Intelligence in Clay", "m": 6, "u": "https://university.clay.com/fr/lessons/abm-and-ad-intelligence-in-clay"}]]]}, {"t": "CRM Enrichment", "lvl": "Intermédiaire", "o": "Compléter et dédoublonner les données d'un CRM (HubSpot, Salesforce) et les garder à jour automatiquement.", "c": [["Leçons", [{"t": "Intro to CRM Enrichment", "m": 4, "u": "https://university.clay.com/fr/lessons/intro-to-crm-enrichment"}, {"t": "Importing from your CRM", "m": 5, "u": "https://university.clay.com/fr/lessons/importing-from-your-crm-crm-enrichment"}, {"t": "Clay x HubSpot Actions", "m": 5, "u": "https://university.clay.com/fr/lessons/clay-x-hubspot-actions-crm-enrichment"}, {"t": "Clay x Salesforce Actions", "m": 5, "u": "https://university.clay.com/fr/lessons/clay-x-salesforce-actions-crm-enrichment"}, {"t": "Enriching your CRM Data", "m": 5, "u": "https://university.clay.com/fr/lessons/crm-enrichment"}, {"t": "Keeping your CRM data fresh", "m": 4, "u": "https://university.clay.com/fr/lessons/keeping-your-crm-data-fresh-crm-enrichment"}, {"t": "Taking action on enriched CRM data", "m": 4, "u": "https://university.clay.com/fr/lessons/exporting"}]]]}, {"t": "Functions", "lvl": "Avancé", "o": "Créer des Functions (enrichissements réutilisables), les déployer dans l'équipe et les maintenir.", "c": [["Leçons", [{"t": "Introduction to Functions", "m": 5, "u": "https://university.clay.com/fr/lessons/introduction-to-functions"}, {"t": "Build Your First Function", "m": 4, "u": "https://university.clay.com/fr/lessons/build-your-first-function"}, {"t": "Roll Functions Out Across Your Team", "m": 6, "u": "https://university.clay.com/fr/lessons/roll-functions-out-across-your-team"}, {"t": "Scale and Maintain Your Function Library", "m": 5, "u": "https://university.clay.com/fr/lessons/scale-and-maintain-your-function-library"}, {"t": "Use Case: Contact & Account Enrichment", "m": 9, "u": "https://university.clay.com/fr/lessons/use-case-contact-account-enrichment"}, {"t": "Use Case: Email Copywriting", "m": 5, "u": "https://university.clay.com/fr/lessons/use-case-email-copywriting"}, {"t": "Use Case: Signal Detection & Lead Qualification", "m": 6, "u": "https://university.clay.com/fr/lessons/use-case-signal-detection-lead-qualification"}, {"t": "What's Possible Next: Functions Beyond the Table", "m": 3, "u": "https://university.clay.com/fr/lessons/whats-possible-next-functions-beyond-the-table"}]]]}];
+const CLAY_MORE = [["https://university.clay.com/fr/docs", "Documentation Clay", "Toutes les fonctions expliquées : Find, Enrich, Transform, Export, Gen AI, signaux, web scraping."], ["https://university.clay.com/fr/use-case-templates", "Claybooks (modèles de cas d'usage)", "Tables prêtes à reproduire : Google Maps, recherche d'emails, signaux de recrutement, emails personnalisés depuis le site web…"], ["https://university.clay.com/fr/courses", "Catalogue complet des cours", "Les autres cours : Automated Inbound, Clay Ads, Audiences, Clay MCP, Email Sequencer…"], ["https://www.youtube.com/@GrowWithClay/videos", "Chaîne YouTube de Clay", "Démos et nouveautés en vidéo."], ["https://community.clay.com", "Communauté Clay (Slack)", "Poser une question à la communauté et chercher des réponses existantes."]];
+const BIZZY_H = [["Démarrer", "Se connecter, gérer son compte et savoir où trouver de l'aide.", [["Besoin d'aide ?", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079118-do-you-need-any-help-", "Le point d'entrée du centre d'aide. Pour une question qui n'y figure pas, le support répond par email à **support@bizzy.org**.", null], ["Conseils de connexion", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000098084-log-in-tips-tricks", "Astuces pour se connecter sans souci à Bizzy.", null], ["Gérer les utilisateurs", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079117-how-to-add-or-delete-users-in-bizzy-", "Ajouter ou supprimer des utilisateurs sur le compte.", null], ["Rôles des utilisateurs", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000091987-user-roles", "Les différents rôles et ce que chacun peut faire.", null]]], ["Trouver des entreprises et des contacts", "Rechercher une entreprise, filtrer la base et constituer des listes proches de l'ICP du client.", [["Trouver les données d'une entreprise", 4, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079135-finding-company-data", null, ["Rechercher une entreprise par **numéro de TVA, nom ou site web**, avec un filtre par type (entreprise ou contact) et par pays.", "La fiche regroupe activités, finances, équipe dirigeante, actionnariat et documents officiels (selon la taille et le pays).", "On peut suivre l'entreprise, l'envoyer vers un CRM ou l'ajouter à une liste."]], ["Utiliser les filtres", 5, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079141-how-to-use-filters-", null, ["Les filtres réduisent la base nationale d'entreprises pour obtenir une liste proche de l'ICP.", "Catégories : entreprise, contact, mises à jour, offres d'emploi, listes et CRM à inclure ou exclure. **Commencer par les filtres entreprise**, puis affiner.", "Enregistrer en **liste intelligente** (filtres conservés, mise à jour automatique) ou en **liste statique** (résultats figés)."]], ["Inclure ou exclure des entreprises", 4, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079136-include-or-exclude-companies-as-a-filter", null, ["Inclure ou exclure les entreprises d'une liste statique (créée dans Bizzy ou importée).", "Avec un CRM connecté (Salesforce, Teamleader Focus, HubSpot), le filtre « Include/exclude CRM » écarte les entreprises déjà présentes.", "« Find Contacts » ouvre les filtres de personnes sur les entreprises de la liste."]], ["Filtrer sur les signaux", 3, "https://help.bizzy.org/en/articles/9122628-filter-on-signals", "Utiliser les signaux comme filtre pour repérer les entreprises à contacter au bon moment.", null], ["Employés et personnes dans Bizzy", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000091991-employees-and-people-in-bizzy", "Comment Bizzy présente les employés et les personnes liés à une entreprise.", null]]], ["Exporter et connecter", "Sortir les données de Bizzy vers un fichier, un CRM ou un outil d'emailing.", [["Exporter ou pousser les données", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000079119-how-to-export-or-push-company-and-contact-data-", "Exporter les entreprises et contacts, ou les pousser vers un outil connecté.", null], ["Intégration lemlist", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000092835-lemlist-integration", "Envoyer des contacts Bizzy dans une campagne lemlist.", null], ["Intégration API", 3, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000088496-api-integration", "Accéder aux données Bizzy par API.", null]]], ["Lead generation", "Les modules de génération de leads : agent commercial et identification des visiteurs du site.", [["Le workflow du Sales Agent", 4, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000102983-how-the-bizzy-sales-agent-workflow-works", null, ["L'agent envoie chaque semaine un lot de leads (en général 10) adapté au marché et à l'ICP, dans l'onglet « New » de la Lead Inbox.", "Pour chaque lead : lire l'analyse d'adéquation, puis **approuver ou refuser avec un retour**, qui affine les recherches suivantes.", "L'agent propose ensuite des ajustements de l'ICP, à appliquer en tout ou en partie."]], ["Website Visitor Tracking", 4, "https://bizzy-support.freshdesk.com/en/support/solutions/articles/202000101481-website-visitor-tracking", null, ["Identifie les entreprises qui visitent un site et les ajoute comme leads (plateforme Lead Generation, option des forfaits Pro et plus).", "Installation dans Paramètres puis Intégrations : snippet dans le `<head>`, via Google Tag Manager ou le CMS ; choix des pages et des pays. Vérification sous 24 h.", "Filtre « Website Visitors » : historique des visites, pages vues, temps passé ; l'onglet People aide à trouver le bon contact."]]]]];
+/* Cursus outils : Clay University et centre d'aide Bizzy (liens vers les vidéos et articles officiels) */
+function seedToolCourses() {
+  const T = slug => (DB.tools.find(t => t.slug === slug) || {}).id || null;
+  const P_CLAY = 'p_clay_u', P_BIZZY = 'p_bizzy_h';
+  DB.paths.push({ id: P_CLAY, title: 'Clay University', description: "Les cours vidéo officiels de Clay, rangés dans l'ordre conseillé. Commencez par Clay 101, puis suivez les cours utiles à vos missions. Vidéos en anglais, sur Clay University.", unlock_mode: 'free', published: true, source: 'manual' });
+  CLAY_U.forEach((c, i) => {
+    const mid = `${P_CLAY}_m${i + 1}`;
+    DB.modules.push({ id: mid, path_id: P_CLAY, position: i + 1, title: c.t, objective: `Niveau ${c.lvl.toLowerCase()}. ${c.o}`, est_minutes: 0, prerequisites: i ? [`${P_CLAY}_m1`] : [], tool_id: T('clay'), badge_label: c.t });
+    c.c.forEach(([ct, ls], j) => {
+      const cid = `${mid}_c${j + 1}`;
+      DB.chapters.push({ id: cid, module_id: mid, position: j + 1, title: ct });
+      ls.forEach((l, k) => DB.lessons.push({ id: `${cid}_l${k + 1}`, chapter_id: cid, position: k + 1, title: l.t, kind: 'content', est_minutes: l.m,
+        blocks: [{ type: 'video', url: l.u, title: l.t, source: 'Clay University', minutes: l.m, caption: 'Vidéo en anglais. Elle s\'ouvre sur Clay University, revenez ensuite valider la leçon.' }] }));
+    });
+  });
+  const mm = `${P_CLAY}_m${CLAY_U.length + 1}`;
+  DB.modules.push({ id: mm, path_id: P_CLAY, position: CLAY_U.length + 1, title: 'Pour aller plus loin', objective: 'Documentation, modèles prêts à l\'emploi et communauté Clay.', est_minutes: 0, prerequisites: [], tool_id: T('clay'), badge_label: 'Clay : pour aller plus loin' });
+  DB.chapters.push({ id: `${mm}_c1`, module_id: mm, position: 1, title: 'Ressources Clay' });
+  DB.lessons.push({ id: `${mm}_c1_l1`, chapter_id: `${mm}_c1`, position: 1, title: 'Documentation, Claybooks et communauté', kind: 'content', est_minutes: 5,
+    blocks: [{ type: 'text', html: '<p>Quand une question dépasse les cours, cherchez dans cet ordre : la documentation, puis les Claybooks (un modèle de table existe souvent déjà), puis la communauté.</p>' },
+      ...CLAY_MORE.map(([url, title, caption]) => ({ type: 'link', url, title, caption }))] });
+
+  DB.paths.push({ id: P_BIZZY, title: 'Bizzy : centre d\'aide', description: "Les articles du centre d'aide Bizzy, rangés par thème : trouver des entreprises, filtrer, exporter, générer des leads. Chaque leçon résume l'essentiel et renvoie vers l'article officiel.", unlock_mode: 'free', published: true, source: 'manual' });
+  BIZZY_H.forEach(([mt, mo, ls], i) => {
+    const mid = `${P_BIZZY}_m${i + 1}`, cid = `${mid}_c1`;
+    DB.modules.push({ id: mid, path_id: P_BIZZY, position: i + 1, title: mt, objective: mo, est_minutes: 0, prerequisites: [], tool_id: T('bizzy'), badge_label: 'Bizzy : ' + mt });
+    DB.chapters.push({ id: cid, module_id: mid, position: 1, title: mt });
+    ls.forEach(([t, m, url, intro, pts], k) => DB.lessons.push({ id: `${cid}_l${k + 1}`, chapter_id: cid, position: k + 1, title: t, kind: 'content', est_minutes: m,
+      blocks: [pts ? { type: 'text', md: '### L\'essentiel\n' + pts.map(x => '- ' + x).join('\n') } : { type: 'text', md: intro },
+        { type: 'link', url, title: 'Lire l\'article complet', caption: 'Centre d\'aide Bizzy (en anglais)', minutes: m }] }));
+  });
+  const ml = `${P_BIZZY}_m${BIZZY_H.length + 1}`;
+  DB.modules.push({ id: ml, path_id: P_BIZZY, position: BIZZY_H.length + 1, title: 'Le centre d\'aide complet', objective: 'Tous les articles Bizzy, par catégorie, et le contact du support.', est_minutes: 0, prerequisites: [], tool_id: T('bizzy'), badge_label: 'Bizzy : centre d\'aide' });
+  DB.chapters.push({ id: `${ml}_c1`, module_id: ml, position: 1, title: 'Centre d\'aide' });
+  DB.lessons.push({ id: `${ml}_c1_l1`, chapter_id: `${ml}_c1`, position: 1, title: 'Explorer le centre d\'aide Bizzy', kind: 'content', est_minutes: 3,
+    blocks: [{ type: 'text', md: 'Le centre d\'aide est classé par catégories (paramètres, recherche, listes, intégrations…). Une question sans réponse ? Écrivez à **support@bizzy.org**.' },
+      { type: 'link', url: 'https://help.bizzy.ai/', title: 'Centre d\'aide Bizzy', caption: 'Toutes les catégories et tous les articles' },
+      { type: 'link', url: 'https://help.bizzy.ai/category/settings', title: 'Catégorie Paramètres', caption: 'Compte, utilisateurs, intégrations' }] });
+
+  const f = DB.folders.find(x => x.name === 'Consultant');
+  if (f) { let pos = DB.folder_paths.filter(x => x.folder_id === f.id).length; [P_CLAY, P_BIZZY].forEach(pid => DB.folder_paths.push({ folder_id: f.id, path_id: pid, position: ++pos })); }
+}
 /* ===================== Démarrage ===================== */
 seed();
+seedToolCourses();
 /* =====================================================================
    Données réelles (Supabase)
    - Au démarrage : lecture de toutes les tables autorisées par les règles d'accès.
@@ -4548,8 +4621,18 @@ async function sbStart() {
 }
 
 /* Import du contenu de départ (une seule fois, par un administrateur, sur une base vide) */
+const missingStarterPaths = () => SEED_CONTENT.paths.filter(p => !DB.paths.some(x => x.title === p.title));
 async function importStarterContent() {
-  const S = SEED_CONTENT, map = {};
+  // Seuls les cursus de départ absents de la base (comparés par titre) sont importés : on peut relancer sans créer de doublon
+  const keep = new Set(missingStarterPaths().map(p => p.id)), S0 = SEED_CONTENT;
+  const mods = S0.modules.filter(m => keep.has(m.path_id)), modIds = new Set(mods.map(m => m.id));
+  const chaps = S0.chapters.filter(c => modIds.has(c.module_id)), chapIds = new Set(chaps.map(c => c.id));
+  const less = S0.lessons.filter(l => chapIds.has(l.chapter_id)), lesIds = new Set(less.map(l => l.id));
+  const quizzes = S0.quizzes.filter(q => lesIds.has(q.lesson_id)), qIds = new Set(quizzes.map(q => q.id));
+  const first = !DB.paths.length;
+  const S = { tools: S0.tools, folders: S0.folders, paths: S0.paths.filter(p => keep.has(p.id)), modules: mods, chapters: chaps, lessons: less, quizzes,
+    questions: S0.questions.filter(x => qIds.has(x.quiz_id)), exercises: S0.exercises.filter(x => lesIds.has(x.lesson_id)),
+    resources: first ? S0.resources : [], folder_paths: S0.folder_paths.filter(fp => keep.has(fp.path_id)) }, map = {};
   const nid = old => old == null ? null : (map[old] || (map[old] = crypto.randomUUID()));
   S.tools.forEach(t => { const x = DB.tools.find(y => y.slug === t.slug); if (x) map[t.id] = x.id; });
   S.folders.forEach(f => { const x = DB.folders.find(y => y.name === f.name); if (x) map[f.id] = x.id; });
@@ -4565,7 +4648,7 @@ async function importStarterContent() {
     questions: S.questions.map(x => ({ id: nid(x.id), quiz_id: nid(x.quiz_id), position: x.position, prompt: x.prompt, options: x.options, explanation: x.explanation || null })),
     exercises: S.exercises.map(x => ({ id: nid(x.id), lesson_id: nid(x.lesson_id), instructions: x.instructions, submission_type: x.submission_type })),
     resources: S.resources.map(r => ({ id: nid(r.id), kind: r.kind, title: r.title, body: r.body, tool_id: r.tool_id ? nid(r.tool_id) : null, tags: r.tags || [] })),
-    folder_paths: S.folder_paths.map(fp => ({ folder_id: nid(fp.folder_id), path_id: nid(fp.path_id), position: fp.position })),
+    folder_paths: S.folder_paths.map(fp => ({ folder_id: nid(fp.folder_id), path_id: nid(fp.path_id), position: fp.position + DB.folder_paths.filter(x => x.folder_id === nid(fp.folder_id)).length })),
   };
   for (const [t, list] of Object.entries(rows)) {
     for (let i = 0; i < list.length; i += 200) {
@@ -4574,7 +4657,7 @@ async function importStarterContent() {
     }
   }
   await loadAll(me.id); render(true);
-  toast(`${rows.paths.length} cursus, ${rows.lessons.length} leçons et ${rows.resources.length} ressources importés.`);
+  toast(`${rows.paths.length} cursus et ${rows.lessons.length} leçons importés${rows.resources.length ? `, ${rows.resources.length} ressources` : ''}.`);
 }
 
 $('loginMark').innerHTML = LOGO_MARK(28);
